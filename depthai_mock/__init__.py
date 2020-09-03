@@ -6,5 +6,5 @@ def init_device(path, *args, **kwargs):
 
 
 def create_pipeline(*args, **kwargs):
-    return MockupCNNPipeline
+    return MockupCNNPipeline(*args, **kwargs)
 

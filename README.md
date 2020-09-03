@@ -1,9 +1,19 @@
 # Depthai-Mock
 
-Usage
+## Installation
 
-`python3 cli.py -s previewout`
+```
+python3 setup.py develop
+```
+## Usage
+
+```
+depthai_mock -s previewout
+```
 
 then, when `data` folder is there, run
 
-`python3 test.py`
+```
+cd depthai_mock
+python3 test.py -p ../data
+```

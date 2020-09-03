@@ -1,8 +1,14 @@
+import argparse
+
 import cv2
 
-from pipeline import MockupCNNPipeline
+from depthai_mock import create_pipeline
 
-p = MockupCNNPipeline(data_path="data")
+parser = argparse.ArgumentParser()
+parser.add_argument('-p', '--path', default="data", type=str, help="Path where to store the captured data")
+args = parser.parse_args()
+
+p = create_pipeline(data_path=args.path)
 entries_prev = []
 
 while True:
