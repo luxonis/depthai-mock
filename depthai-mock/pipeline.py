@@ -3,6 +3,7 @@ import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 
@@ -12,7 +13,7 @@ class MockupCNNPipeline:
         with open(Path(data_path) / Path('dataset.tsv')) as fd:
             rd = csv.reader(fd, delimiter="\t", quotechar='"')
             for row in rd:
-                self.dataset[row[2]] = {"ts": row[0], "source": row[1], "data": row[2]}
+                self.dataset[row[2]] = {"ts": float(row[0]), "source": row[1], "data": row[2]}
         def _load_matched(path):
             filename = Path(path).name
             entry = self.dataset.get(filename, None)
@@ -31,9 +32,12 @@ class MockupCNNPipeline:
             self.started = time.time()
             return []
 
+        if self.current_index + 1 == len(self.frames):
+            raise StopIteration()
+
         to_return = []
         for index, item in enumerate(self.frames[self.current_index:]):
-            if float(item['ts']) < time.time() - self.started:
+            if item['ts'] < time.time() - self.started:
                 to_return.append(item['data'])
             else:
                 self.current_index = self.current_index + index

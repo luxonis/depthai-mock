@@ -3,7 +3,6 @@ import cv2
 from pipeline import MockupCNNPipeline
 
 p = MockupCNNPipeline(data_path="data")
-p.get_available_data_packets()
 
 while True:
     data_packets = p.get_available_data_packets()
