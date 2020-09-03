@@ -3,8 +3,27 @@ import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from pathlib import Path
 
-import cv2
 import numpy as np
+
+
+class MockupDataPacket:
+    class MockupMetadata:
+        def __init__(self, ts):
+            self.ts = ts
+
+        def getTimestamp(self):
+            return self.ts
+
+    def __init__(self, stream_name, data, ts):
+        self.stream_name = stream_name
+        self.data = data
+        self.metadata = self.MockupMetadata(ts)
+
+    def getData(self):
+        return self.data
+
+    def getMetadata(self):
+        return self.metadata
 
 
 class MockupCNNPipeline:
@@ -18,11 +37,10 @@ class MockupCNNPipeline:
             filename = Path(path).name
             entry = self.dataset.get(filename, None)
             if entry is not None:
-                entry["data"] = np.load(path)
-                return entry
+                return MockupDataPacket(stream_name=entry['source'], data=np.load(path), ts=entry['ts'])
 
         with ThreadPoolExecutor(max_workers=100) as pool:
-            self.frames = list(sorted(pool.map(_load_matched, Path(data_path).glob('*.npy')), key=lambda item: item['ts']))
+            self.frames = list(sorted(pool.map(_load_matched, Path(data_path).glob('*.npy')), key=lambda item: item.getMetadata().getTimestamp()))
 
         self.started = None
         self.current_index = 0
@@ -37,8 +55,8 @@ class MockupCNNPipeline:
 
         to_return = []
         for index, item in enumerate(self.frames[self.current_index:]):
-            if item['ts'] < time.time() - self.started:
-                to_return.append(item['data'])
+            if item.getMetadata().getTimestamp() < time.time() - self.started:
+                to_return.append(item)
             else:
                 self.current_index = self.current_index + index
                 return to_return
@@ -46,6 +64,7 @@ class MockupCNNPipeline:
 
     def get_available_nnet_and_data_packets(self):
         pass
+
 
 if __name__ == "__main__":
     MockupCNNPipeline("data")

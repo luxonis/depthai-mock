@@ -79,29 +79,22 @@ def record_depthai_mockups():
                 data_packets = p.get_available_data_packets()
 
             for packet in data_packets:
-                frame = None
+                frame = packet.getData()
 
-                if packet.stream_name == 'previewout':
-                    data = packet.getData()
-                    data0 = data[0, :, :]
-                    data1 = data[1, :, :]
-                    data2 = data[2, :, :]
-                    frame = cv2.merge([data0, data1, data2])
-                if packet.stream_name in ('left', 'right', 'disparity_color', 'disparity'):
-                    frame = packet.getData()
-
-                elif packet.stream_name in ('disparity_color', "depth_raw"):
-                    frame = packet.getData()
-
-                    if len(frame.shape) == 2 and frame.dtype != np.uint8:
-                        frame = (65535 // frame).astype(np.uint8)
-                        frame = cv2.applyColorMap(frame, cv2.COLORMAP_HOT)
+                if packet.stream_name in ('disparity_color', "depth_raw") and len(frame.shape) == 2 and frame.dtype != np.uint8:
+                    frame = (65535 // frame).astype(np.uint8)
+                    frame = cv2.applyColorMap(frame, cv2.COLORMAP_HOT)
 
                 if frame is not None:
-                    frames_storage.append((time.time(), "frame", frame))
+                    frames_storage.append((time.time(), packet.stream_name, frame))
+
+                    if packet.stream_name == 'previewout':
+                        data = packet.getData()
+                        data0 = data[0, :, :]
+                        data1 = data[1, :, :]
+                        data2 = data[2, :, :]
+                        frame = cv2.merge([data0, data1, data2])
                     cv2.imshow(packet.stream_name, frame)
-                else:
-                    print("Dropped")
 
             if cv2.waitKey(1) == ord('q'):
                 break
