@@ -1,17 +1,33 @@
-from concurrent.futures.thread import ThreadPoolExecutor
+from multiprocessing import Process, Queue
+import argparse
+import depthai
+import depthai_helpers.cli_utils
+import consts.resource_paths
+import time
+import cv2
+import numpy as np
+from multiprocessing import Process, Queue
+import csv
 from pathlib import Path
+from concurrent.futures.thread import ThreadPoolExecutor
+
+
+def _store_data_proc(queue: Queue, dest):
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        with open(dest / Path('dataset.tsv'), 'w') as out_file:
+            while True:
+                msg = queue.get()
+                if msg == "DONE":
+                    return
+                ts, source, data = msg
+                filename = Path(f"{int(ts * 10000)}-{source}.npy")
+                pool.submit(np.save, dest / filename, data)
+                tsv_writer = csv.writer(out_file, delimiter='\t')
+                tsv_writer.writerow([ts, source, filename])
+
 
 
 def record_depthai_mockups():
-    import argparse
-    import depthai
-    import depthai_helpers.cli_utils
-    import consts.resource_paths
-    import time
-    import cv2
-    import csv
-    import numpy as np
-
     parser = argparse.ArgumentParser()
     parser.add_argument('-nd', '--no-display', dest="nodisplay", action='store_true', default=False, help="Do not try display the incoming frames")
     parser.add_argument('-t', '--time', type=int, default=-1, help="Limits the max time of the recording. Mandatory when"
@@ -66,53 +82,53 @@ def record_depthai_mockups():
     start_ts = time.time()
     nnet_storage = []
     frames_storage = []
+    pqueue = Queue()
+    reader_p = Process(target=_store_data_proc, args=(pqueue, dest))
+    reader_p.daemon = True
+    reader_p.start()
 
-    with ThreadPoolExecutor(max_workers=100) as pool:
-        while args.time < 0 or time.time() - start_ts < args.time:
-            if args.ai:
-                nnet_packets, data_packets = p.get_available_nnet_and_data_packets()
+    while args.time < 0 or time.time() - start_ts < args.time:
+        if args.ai:
+            nnet_packets, data_packets = p.get_available_nnet_and_data_packets()
 
-                for nnet_packet in nnet_packets:
-                    for e in nnet_packet.entries():
-                        if e[0]['id'] == -1.0 or e[0]['confidence'] == 0.0:
-                            break
-                        nnet_storage.append((time.time(), "nnet", e[0]))
-            else:
-                data_packets = p.get_available_data_packets()
+            for nnet_packet in nnet_packets:
+                for e in nnet_packet.entries():
+                    if e[0]['id'] == -1.0 or e[0]['confidence'] == 0.0:
+                        break
+                    nnet_storage.append((time.time(), "nnet", e[0]))
+        else:
+            data_packets = p.get_available_data_packets()
 
-            for packet in data_packets:
-                frame = None
+        for packet in data_packets:
+            frame = None
 
-                if packet.stream_name == 'previewout':
-                    data = packet.getData()
-                    data0 = data[0, :, :]
-                    data1 = data[1, :, :]
-                    data2 = data[2, :, :]
-                    frame = cv2.merge([data0, data1, data2])
-                if packet.stream_name in ('left', 'right', 'disparity_color', 'disparity'):
-                    frame = packet.getData()
+            if packet.stream_name == 'previewout':
+                data = packet.getData()
+                data0 = data[0, :, :]
+                data1 = data[1, :, :]
+                data2 = data[2, :, :]
+                frame = cv2.merge([data0, data1, data2])
+            if packet.stream_name in ('left', 'right', 'disparity_color', 'disparity'):
+                frame = packet.getData()
 
-                elif packet.stream_name in ('disparity_color', "depth_raw"):
-                    frame = packet.getData()
+            elif packet.stream_name in ('disparity_color', "depth_raw"):
+                frame = packet.getData()
 
-                    if len(frame.shape) == 2 and frame.dtype != np.uint8:
-                        frame = (65535 // frame).astype(np.uint8)
-                        frame = cv2.applyColorMap(frame, cv2.COLORMAP_HOT)
+                if len(frame.shape) == 2 and frame.dtype != np.uint8:
+                    frame = (65535 // frame).astype(np.uint8)
+                    frame = cv2.applyColorMap(frame, cv2.COLORMAP_HOT)
 
-                if frame is not None:
-                    frames_storage.append((time.time(), "frame", frame))
-                    cv2.imshow(packet.stream_name, frame)
+            if frame is not None:
+                frames_storage.append((time.time(), "frame", frame))
+                cv2.imshow(packet.stream_name, frame)
 
-            if cv2.waitKey(1) == ord('q'):
-                break
+        if cv2.waitKey(1) == ord('q'):
+            break
 
-            with open(dest / Path('dataset.tsv'), 'w') as out_file:
-                for ts, source, data in sorted([*frames_storage, *nnet_storage], key=lambda item: item[0]):
-                    filename = Path(f"{int((ts - start_ts) * 10000)}-{source}.npy")
-                    pool.submit(np.save, dest / filename, data)
-                    tsv_writer = csv.writer(out_file, delimiter='\t')
-                    tsv_writer.writerow([ts - start_ts, source, filename])
-
+        for ts, source, data in sorted([*frames_storage, *nnet_storage], key=lambda item: item[0]):
+            pqueue.put((ts, source, data))
+    pqueue.put("DONE")
+    reader_p.join()
 
 if __name__ == "__main__":
     record_depthai_mockups()
