@@ -34,6 +34,9 @@ while True:
                 cv2.rectangle(frame, pt1, pt2, (0, 0, 255), 2)
 
             cv2.imshow('previewout', frame)
+        elif packet.stream_name in ('left', 'right'):
+            frame = packet.getData()
+            cv2.imshow(packet.stream_name, frame)
 
     if cv2.waitKey(1) == ord('q'):
         break
