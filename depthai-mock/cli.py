@@ -1,3 +1,6 @@
+import json
+
+
 def record_depthai_mockups():
     import argparse
     import depthai
@@ -65,6 +68,15 @@ def record_depthai_mockups():
     nnet_storage = []
     frames_storage = []
 
+    with open(args.blob_config) as f:
+        blob_config = json.load(f)
+        key_mappings = blob_config['tensors'][0]['property_key_mapping']
+        field_names = []
+        for arr in key_mappings:
+            if len(arr) > 0:
+                field_names = arr
+                break
+
     with ThreadPoolExecutor(max_workers=100) as pool:
         while args.time < 0 or time.time() - start_ts < args.time:
             if args.ai:
@@ -74,7 +86,10 @@ def record_depthai_mockups():
                     for e in nnet_packet.entries():
                         if e[0]['id'] == -1.0 or e[0]['confidence'] == 0.0:
                             break
-                        nnet_storage.append((time.time(), "nnet", e[0]))
+                        entry = {}
+                        for field in field_names:
+                            entry[field] = e[0][field]
+                        nnet_storage.append((time.time(), "nnet", entry))
             else:
                 data_packets = p.get_available_data_packets()
 
@@ -101,8 +116,14 @@ def record_depthai_mockups():
 
         with open(dest / Path('dataset.tsv'), 'w') as out_file:
             for ts, source, data in sorted([*frames_storage, *nnet_storage], key=lambda item: item[0]):
-                filename = Path(f"{int((ts - start_ts) * 10000)}-{source}.npy")
-                pool.submit(np.save, dest / filename, data)
+                filename = Path(f"{int((ts - start_ts) * 10000)}-{source}")
+                if source == "nnet":
+                    filename = filename.with_suffix('.json')
+                    with open(dest / filename, 'w') as f:
+                        json.dump(data, f)
+                else:
+                    filename = filename.with_suffix('.npy')
+                    pool.submit(np.save, dest / filename, data)
                 tsv_writer = csv.writer(out_file, delimiter='\t')
                 tsv_writer.writerow([ts - start_ts, source, filename])
 

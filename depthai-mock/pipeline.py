@@ -1,4 +1,5 @@
 import csv
+import json
 import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from pathlib import Path
@@ -6,24 +7,48 @@ from pathlib import Path
 import numpy as np
 
 
+class MockupMetadata:
+    def __init__(self, ts):
+        self.ts = ts
+
+    def getTimestamp(self):
+        return self.ts
+
+
 class MockupDataPacket:
-    class MockupMetadata:
-        def __init__(self, ts):
-            self.ts = ts
-
-        def getTimestamp(self):
-            return self.ts
-
     def __init__(self, stream_name, data, ts):
         self.stream_name = stream_name
         self.data = data
-        self.metadata = self.MockupMetadata(ts)
+        self.metadata = MockupMetadata(ts)
 
     def getData(self):
         return self.data
 
     def getMetadata(self):
         return self.metadata
+
+
+class MockupCNNPacket:
+    def __init__(self, data, ts):
+        self.data = data
+        self.metadata = MockupMetadata(ts)
+
+    def getData(self):
+        return self.data
+
+    def getMetadata(self):
+        return self.metadata
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+
+class MockupCNNContainer:
+    def __init__(self, packets):
+        self.packets = packets
+
+    def entries(self):
+        return self.packets
 
 
 class MockupCNNPipeline:
@@ -37,33 +62,46 @@ class MockupCNNPipeline:
             filename = Path(path).name
             entry = self.dataset.get(filename, None)
             if entry is not None:
-                return MockupDataPacket(stream_name=entry['source'], data=np.load(path), ts=entry['ts'])
+                if entry['source'] == "nnet":
+                    with open(path) as fp:
+                        return MockupCNNPacket(data=json.load(fp), ts=entry['ts'])
+                else:
+                    return MockupDataPacket(stream_name=entry['source'], data=np.load(path), ts=entry['ts'])
 
         with ThreadPoolExecutor(max_workers=100) as pool:
             self.frames = list(sorted(pool.map(_load_matched, Path(data_path).glob('*.npy')), key=lambda item: item.getMetadata().getTimestamp()))
+            self.nnets = list(sorted(pool.map(_load_matched, Path(data_path).glob('*.json')), key=lambda item: item.getMetadata().getTimestamp()))
 
         self.started = None
-        self.current_index = 0
+        self.current_index_data = 0
+        self.current_index_nnet = 0
 
-    def get_available_data_packets(self):
+    def _get_available_packets(self, array, index):
         if self.started is None:
             self.started = time.time()
-            return []
+            return [], 0
 
-        if self.current_index + 1 == len(self.frames):
+        if index + 1 == len(array):
             raise StopIteration()
 
         to_return = []
-        for index, item in enumerate(self.frames[self.current_index:]):
+        for i, item in enumerate(array[index:]):
             if item.getMetadata().getTimestamp() < time.time() - self.started:
                 to_return.append(item)
             else:
-                self.current_index = self.current_index + index
-                return to_return
-        return to_return
+                index = index + i
+                return to_return, index
+        return to_return, index
+
+    def get_available_data_packets(self):
+        data, self.current_index_data = self._get_available_packets(self.frames, self.current_index_data)
+        return data
 
     def get_available_nnet_and_data_packets(self):
-        pass
+        data = self.get_available_data_packets()
+        nnets, self.current_index_nnet = self._get_available_packets(self.nnets, self.current_index_nnet)
+        nnets = [MockupCNNContainer(packets=[[item]]) for item in nnets]
+        return nnets, data
 
 
 if __name__ == "__main__":
