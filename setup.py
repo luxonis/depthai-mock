@@ -14,5 +14,8 @@ setup(
             'depthai_mock=depthai_mock.cli:record_depthai_mockups'
         ],
     },
+    install_requires=[
+        "depthai==0.2.0.1"
+    ],
     zip_safe=False
 )

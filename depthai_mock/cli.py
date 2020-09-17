@@ -1,11 +1,25 @@
 import json
 
+def _stream_type(option):
+    option_list = option.split(",")
+    if len(option_list) > 2:
+        raise ValueError(f"{option} format is invalid.")
+
+    stream_name = option_list[0]
+    if len(option_list) == 1:
+        stream_dict = {"name": stream_name}
+    else:
+        try:
+            max_fps = float(option_list[1])
+        except ValueError:
+            raise ValueError(f"In option: {option} {option_list[1]} is not a number!")
+
+        stream_dict = {"name": stream_name, "max_fps": max_fps}
+    return stream_dict
 
 def record_depthai_mockups():
     import argparse
     import depthai
-    import depthai_helpers.cli_utils
-    import consts.resource_paths
     import time
     import cv2
     import csv
@@ -13,19 +27,22 @@ def record_depthai_mockups():
     from pathlib import Path
     from concurrent.futures.thread import ThreadPoolExecutor
 
+    def __get_fullpath(path):
+        return str((Path(__file__).parent / Path(path)).resolve().absolute())
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-nd', '--no-display', dest="nodisplay", action='store_true', default=False, help="Do not try display the incoming frames")
     parser.add_argument('-t', '--time', type=int, default=-1, help="Limits the max time of the recording. Mandatory when"
                                                                    "used with -nd (--no-display) option")
     parser.add_argument('-ai', '--enable-ai', dest="ai", action='store_true', default=False, help="Store also the nnet results")
-    parser.add_argument('-b', '--blob', default=consts.resource_paths.blob_fpath, type=str, help="Path to nnet model .blob file")
-    parser.add_argument('-bc', '--blob-config', dest="blob_config", default=consts.resource_paths.blob_config_fpath, type=str, help="Path to nnet model config .json file")
+    parser.add_argument('-b', '--blob', default=(__get_fullpath('./mobilenet-ssd/mobilenet-ssd.blob')), type=str, help="Path to nnet model .blob file")
+    parser.add_argument('-bc', '--blob-config', dest="blob_config", default=__get_fullpath('./mobilenet-ssd/mobilenet-ssd.json'), type=str, help="Path to nnet model config .json file")
     parser.add_argument('-p', '--path', default="data", type=str, help="Path where to store the captured data")
 
     parser.add_argument(
         "-s", "--streams",
         nargs="+",
-        type=depthai_helpers.cli_utils._stream_type,
+        type=_stream_type,
         dest="streams",
         default=["metaout", "previewout"],
         help="Define which streams to enable \n"
@@ -45,10 +62,9 @@ def record_depthai_mockups():
     if args.nodisplay and args.time < 1:
         raise ValueError("You need to provide a correct time limit for the recording if used without display")
 
-    if not depthai.init_device(consts.resource_paths.device_cmd_fpath):
-        raise RuntimeError("Error initializing device. Try to reset it.")
+    device = depthai.Device("", False)
 
-    p = depthai.create_pipeline(config={
+    p = device.create_pipeline(config={
         "streams": args.streams,
         "ai": {
             "blob_file": args.blob,
