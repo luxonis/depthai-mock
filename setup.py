@@ -17,5 +17,6 @@ setup(
     install_requires=[
         "depthai==0.2.0.1"
     ],
+    package_data={'': ['mobilenet-ssd/*']},
     zip_safe=False
 )
