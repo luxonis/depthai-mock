@@ -28,27 +28,43 @@ class MockupDataPacket:
         return self.metadata
 
 
+class MockupDetection(dict):
+    __getattr__ = dict.get
+
+
 class MockupCNNPacket:
     def __init__(self, data, ts):
-        self.data = data
+        if isinstance(data, list):
+            self.raw = False
+            self.data = [MockupDetection(item) for item in data]
+        elif isinstance(data, dict):
+            self.raw = True
+            self.data = data
+
         self.metadata = MockupMetadata(ts)
 
-    def getData(self):
+    def getDetectedObjects(self):
+        if self.raw:
+            raise RuntimeError('getDetectedObjects should be used only when ["NN_config"]["output_format"] is set to detection! https://docs.luxonis.com/api/#creating-blob-configuration-file')
         return self.data
+
+    def get_tensor(self, name):
+        if isinstance(name, int):
+            return self.data[list(self.data.keys())[name]]
+        else:
+            return self.data[name]
+
+    def getOutputsList(self):
+        return list(self.data.values())
+
+    def getOutputsDict(self):
+        return self.data
+
+    def __getitem__(self, name):
+        return self.get_tensor(name)
 
     def getMetadata(self):
         return self.metadata
-
-    def __getitem__(self, item):
-        return self.data[item]
-
-
-class MockupCNNContainer:
-    def __init__(self, packets):
-        self.packets = packets
-
-    def entries(self):
-        return self.packets
 
 
 class MockupCNNPipeline:
@@ -100,7 +116,6 @@ class MockupCNNPipeline:
     def get_available_nnet_and_data_packets(self):
         data = self.get_available_data_packets()
         nnets, self.current_index_nnet = self._get_available_packets(self.nnets, self.current_index_nnet)
-        nnets = [MockupCNNContainer(packets=[[item]]) for item in nnets]
         return nnets, data
 
 

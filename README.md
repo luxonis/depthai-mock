@@ -6,7 +6,7 @@ and then play them back again as they would be produced normally - but without a
 ## Installation
 
 ```
-python3 -m pip install --upgrade git+https://github.com/luxonis/depthai-mock.git
+python3 -m pip install depthai-mock
 ```
 ## Usage
 

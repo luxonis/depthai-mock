@@ -9,18 +9,13 @@ parser.add_argument('-p', '--path', default="data", type=str, help="Path where t
 args = parser.parse_args()
 
 p = create_pipeline(data_path=args.path)
-entries_prev = []
+detections = []
 
 while True:
     nnet_packets, data_packets = p.get_available_nnet_and_data_packets()
 
     for nnet_packet in nnet_packets:
-        entries_prev = []
-        for e in nnet_packet.entries():
-            if e[0]['id'] == -1.0 or e[0]['confidence'] == 0.0:
-                break
-            if e[0]['confidence'] > 0.5:
-                entries_prev.append(e[0])
+        detections = list(nnet_packet.getDetectedObjects())
 
     for packet in data_packets:
         if packet.stream_name == 'previewout':
@@ -33,9 +28,9 @@ while True:
             img_h = frame.shape[0]
             img_w = frame.shape[1]
 
-            for e in entries_prev:
-                pt1 = int(e['left'] * img_w), int(e['top'] * img_h)
-                pt2 = int(e['right'] * img_w), int(e['bottom'] * img_h)
+            for detection in detections:
+                pt1 = int(detection.x_min * img_w), int(detection.y_min * img_h)
+                pt2 = int(detection.x_max * img_w), int(detection.y_max * img_h)
 
                 cv2.rectangle(frame, pt1, pt2, (0, 0, 255), 2)
 

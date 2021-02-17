@@ -1,4 +1,16 @@
 import json
+import numpy as np
+import depthai
+
+
+class DataEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, depthai.Detections):
+            return [detection.get_dict() for detection in obj]
+        return json.JSONEncoder.default(self, obj)
+
 
 def _stream_type(option):
     option_list = option.split(",")
@@ -16,6 +28,7 @@ def _stream_type(option):
 
         stream_dict = {"name": stream_name, "max_fps": max_fps}
     return stream_dict
+
 
 def record_depthai_mockups():
     import argparse
@@ -55,12 +68,12 @@ def record_depthai_mockups():
     dest = Path(args.path).resolve().absolute()
 
     if dest.exists() and len(list(dest.glob('*'))) != 0:
-        raise ValueError(
+        raise RuntimeError(
             f"Path {dest} contains {len(list(dest.glob('*')))} files. Either specify new path or remove files from this directory")
     dest.mkdir(parents=True, exist_ok=True)
 
     if args.nodisplay and args.time < 1:
-        raise ValueError("You need to provide a correct time limit for the recording if used without display")
+        raise RuntimeError("You need to provide a correct time limit for the recording if used without display")
 
     device = depthai.Device("", False)
 
@@ -84,28 +97,17 @@ def record_depthai_mockups():
     nnet_storage = []
     frames_storage = []
 
-    with open(args.blob_config) as f:
-        blob_config = json.load(f)
-        key_mappings = blob_config['tensors'][0]['property_key_mapping']
-        field_names = []
-        for arr in key_mappings:
-            if len(arr) > 0:
-                field_names = arr
-                break
-
     with ThreadPoolExecutor(max_workers=100) as pool:
         while args.time < 0 or time.time() - start_ts < args.time:
             if args.ai:
                 nnet_packets, data_packets = p.get_available_nnet_and_data_packets()
 
                 for nnet_packet in nnet_packets:
-                    for e in nnet_packet.entries():
-                        if e[0]['id'] == -1.0 or e[0]['confidence'] == 0.0:
-                            break
-                        entry = {}
-                        for field in field_names:
-                            entry[field] = e[0][field]
-                        nnet_storage.append((time.time(), "nnet", entry))
+                    try:
+                        nnet_storage.append((time.time(), "nnet", nnet_packet.getDetectedObjects()))
+                    except RuntimeError:
+                        nnet_storage.append((time.time(), "nnet", nnet_packet.getOutputsDict()))
+
             else:
                 data_packets = p.get_available_data_packets()
 
@@ -136,7 +138,7 @@ def record_depthai_mockups():
                 if source == "nnet":
                     filename = filename.with_suffix('.json')
                     with open(dest / filename, 'w') as f:
-                        json.dump(data, f)
+                        json.dump(data, f, cls=DataEncoder)
                 else:
                     filename = filename.with_suffix('.npy')
                     pool.submit(np.save, dest / filename, data)
