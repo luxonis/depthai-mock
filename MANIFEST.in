@@ -1,1 +1,1 @@
-recursive-include mobilenet-ssd/* *.*
+recursive-include depthai_mock/mobilenet-ssd *.*
